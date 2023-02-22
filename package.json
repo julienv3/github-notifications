@@ -3,7 +3,7 @@
   "displayName": "Github Notifications",
   "description": "Display GitHub notifications in VS Code",
   "publisher": "julienv3",
-  "version": "0.0.1",
+  "version": "0.0.2",
   "license": "MIT",
   "homepage": "https://github.com/julienv3/github-notifications",
   "repository": {
@@ -39,8 +39,12 @@
     "views": {
       "github-notifications": [
         {
-          "id": "github-notifications-list",
-          "name": "GitHub Notifications"
+          "id": "github-notifications-unread",
+          "name": "New"
+        },
+        {
+          "id": "github-notifications-read",
+          "name": "Read"
         }
       ]
     }
@@ -61,7 +65,10 @@
     "@types/mocha": "^10.0.1",
     "@types/node": "16.x",
     "@types/vscode": "^1.75.0",
+    "@typescript-eslint/eslint-plugin": "^5.49.0",
+    "@typescript-eslint/parser": "^5.49.0",
     "@vscode/test-electron": "^2.2.2",
+    "eslint": "^8.33.0",
     "glob": "^8.1.0",
     "mocha": "^10.1.0",
     "ts-loader": "^9.4.2",

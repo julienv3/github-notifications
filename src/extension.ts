@@ -6,8 +6,11 @@ import * as vscode from "vscode";
 
 /* eslint-disable @typescript-eslint/naming-convention */
 
-interface Notifications {
+type Status = "unread" | "read";
+
+interface Notification {
   reason: string;
+  unread: boolean;
   subject?: {
     title?: string;
     url?: string;
@@ -44,12 +47,20 @@ export async function activate(context: vscode.ExtensionContext) {
     await updateToken();
   }
 
-  const treeDataProvider = new NotificationProvider(context.secrets);
-  const treeView = vscode.window.createTreeView("github-notifications-list", {
-    treeDataProvider,
-    showCollapseAll: true,
+  const providers = (["unread", "read"] as Status[]).map((status) => {
+    const treeDataProvider = new NotificationProvider(status);
+    const treeView = vscode.window.createTreeView(
+      `github-notifications-${status}`,
+      {
+        treeDataProvider,
+        showCollapseAll: true,
+      }
+    );
+    status === "unread" && treeDataProvider.setTreeView(treeView);
+    return treeDataProvider;
   });
-  treeDataProvider.setTreeView(treeView);
+
+  new Fetcher(context.secrets, providers);
 }
 
 // This method is called when your extension is deactivated
@@ -63,13 +74,11 @@ function unSnakeCase(text: string) {
     .join(" ");
 }
 
-export class NotificationProvider
-  implements vscode.TreeDataProvider<NotificationItem>
-{
-  private treeView?: vscode.TreeView<NotificationItem>;
-  private notificationsPerReason?: Map<string, Notifications[]>;
-
-  constructor(secrets: vscode.SecretStorage) {
+export class Fetcher {
+  constructor(
+    secrets: vscode.SecretStorage,
+    providers: NotificationProvider[]
+  ) {
     const update = async () => {
       const bailUntilTokenFixed = () => {
         secrets.onDidChange((e) => e.key === SECRET_TOKEN_KEY && update());
@@ -79,14 +88,17 @@ export class NotificationProvider
         return bailUntilTokenFixed();
       }
 
-      const response = await fetch("https://api.github.com/notifications", {
-        headers: {
-          Accept: "application/vnd.github+json",
-          Authorization: `Bearer ${token}`,
-          "X-Github-Api-Version": "2022-11-28",
-        },
-      });
-      let notifications = (await response.json()) as Notifications[];
+      const response = await fetch(
+        "https://api.github.com/notifications?all=true",
+        {
+          headers: {
+            Accept: "application/vnd.github+json",
+            Authorization: `Bearer ${token}`,
+            "X-Github-Api-Version": "2022-11-28",
+          },
+        }
+      );
+      let notifications = (await response.json()) as Notification[];
 
       if (response.status === 401) {
         vscode.window.showErrorMessage(
@@ -95,34 +107,36 @@ export class NotificationProvider
         return bailUntilTokenFixed();
       }
 
-      this.notificationsPerReason = notifications.reduce((acc, n) => {
-        const notifs = (acc.get(n.reason) ||
-          acc.set(n.reason, []).get(n.reason)) as Notifications[];
+      const map = notifications.reduce((acc, n) => {
+        const status = n.unread ? "unread" : "read";
+        const map =
+          acc.get(status) ||
+          (acc
+            .set(status, new Map<string, Notification[]>())
+            .get(status) as Map<string, Notification[]>);
+        const notifs =
+          map.get(n.reason) ||
+          (map.set(n.reason, []).get(n.reason) as Notification[]);
         notifs.push(n);
         return acc;
-      }, new Map<string, Notifications[]>());
+      }, new Map<Status, Map<string, Notification[]>>());
 
-      const reviewRequiredCount = Array.from(
-        this.notificationsPerReason.entries()
-      ).reduce(
-        (acc, [reason, notifications]) =>
-          acc + (reason === "ci_activity" ? 0 : notifications.length),
-        0
-      );
-
-      this.treeView &&
-        (this.treeView.badge = {
-          tooltip: `${reviewRequiredCount} notifications`,
-          value: reviewRequiredCount,
-        });
-
-      this.refresh();
+      providers.forEach((p) => p.refresh(map));
 
       const pollInterval = response.headers.get("X-Poll-Interval");
       setTimeout(update, (pollInterval ? +pollInterval : 60) * 1000);
     };
     update();
   }
+}
+
+export class NotificationProvider
+  implements vscode.TreeDataProvider<NotificationItem>
+{
+  private treeView?: vscode.TreeView<NotificationItem>;
+  private notificationsPerReason: Map<string, Notification[]> = new Map();
+
+  constructor(private status: Status) {}
 
   setTreeView(treeView: vscode.TreeView<NotificationItem>) {
     this.treeView = treeView;
@@ -176,7 +190,26 @@ export class NotificationProvider
     NotificationItem | undefined | null | void
   > = new vscode.EventEmitter<NotificationItem | undefined | null | void>();
 
-  private refresh(): void {
+  public refresh(map: Map<Status, Map<string, Notification[]>>): void {
+    this.notificationsPerReason = map.get(this.status) as Map<
+      string,
+      Notification[]
+    >;
+
+    const reviewRequiredCount = Array.from(
+      this.notificationsPerReason.entries()
+    ).reduce(
+      (acc, [reason, notifications]) =>
+        acc + (reason === "ci_activity" ? 0 : notifications.length),
+      0
+    );
+
+    this.treeView &&
+      (this.treeView.badge = {
+        tooltip: `${reviewRequiredCount} notifications`,
+        value: reviewRequiredCount,
+      });
+
     this._onDidChangeTreeData.fire();
   }
 
