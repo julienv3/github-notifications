@@ -1,11 +1,12 @@
 {
-  "name": "github-notifications",
-  "displayName": "Github Notifications",
+  "name": "github-code-notifications",
+  "displayName": "GitHub Notifications in VS Code",
   "description": "Display GitHub notifications in VS Code",
   "publisher": "julienv3",
-  "version": "0.0.2",
+  "version": "0.0.3",
   "license": "MIT",
   "homepage": "https://github.com/julienv3/github-notifications",
+  "icon": "resources/icon.png",
   "repository": {
     "type": "git",
     "url": "https://github.com/julienv3/github-notifications.git"
@@ -23,30 +24,71 @@
   "contributes": {
     "commands": [
       {
-        "command": "github-notifications.updateToken",
-        "title": "GitHub Notifications: Update token"
+        "command": "github-code-notifications.updateToken",
+        "category": "GitHub Notifications",
+        "title": "Update token"
+      },
+      {
+        "command": "github-code-notifications.done",
+        "category": "GitHub Notifications",
+        "title": "Mark as done",
+        "icon": "resources/check.svg"
+      },
+      {
+        "command": "github-code-notifications.undone",
+        "category": "GitHub Notifications",
+        "title": "Mark as not done",
+        "icon": "resources/uncheck.svg"
       }
     ],
     "viewsContainers": {
       "activitybar": [
         {
-          "id": "github-notifications",
+          "id": "github-code-notifications",
           "title": "GitHub Notifications",
           "icon": "resources/githubnotifications.svg"
         }
       ]
     },
     "views": {
-      "github-notifications": [
+      "github-code-notifications": [
         {
-          "id": "github-notifications-unread",
+          "id": "github-code-notifications-unread",
           "name": "New"
         },
         {
-          "id": "github-notifications-read",
+          "id": "github-code-notifications-read",
           "name": "Read"
+        },
+        {
+          "id": "github-code-notifications-done",
+          "name": "Done"
         }
       ]
+    },
+    "menus": {
+      "view/item/context": [
+        {
+          "command": "github-code-notifications.done",
+          "when": "view == github-code-notifications-unread && viewItem == leaf || view == github-code-notifications-read && viewItem == leaf",
+          "group": "inline"
+        },
+        {
+          "command": "github-code-notifications.undone",
+          "when": "view == github-code-notifications-done && viewItem == leaf",
+          "group": "inline"
+        }
+      ]
+    },
+    "configuration": {
+      "title": "GitHub Notifications",
+      "properties": {
+        "github-code-notifications.ignoreCiActivity": {
+          "type": "boolean",
+          "default": false,
+          "description": "Ignore \"ci activity\" notifications for the new notifications count displayed in the activity bar icon badge."
+        }
+      }
     }
   },
   "scripts": {

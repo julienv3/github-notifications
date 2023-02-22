@@ -1,14 +1,11 @@
-// The module 'vscode' contains the VS Code extensibility API
-// Import the module and reference it with the alias vscode in your code below
 import fetch from "node-fetch";
 import * as path from "path";
 import * as vscode from "vscode";
 
-/* eslint-disable @typescript-eslint/naming-convention */
-
 type Status = "unread" | "read";
 
 interface Notification {
+  id: string;
   reason: string;
   unread: boolean;
   subject?: {
@@ -16,17 +13,30 @@ interface Notification {
     url?: string;
     type?: string;
   };
+  merged?: boolean;
 }
 
-const SECRET_TOKEN_KEY = "token";
+interface RefreshHandler {
+  refresh: (latest: Notification[]) => void;
+}
 
+const enum STORAGE_KEY {
+  TOKEN = "token",
+  DONE = "done",
+}
+
+/**
+ * GitHut Notifications extension activation
+ * @param context Extension context
+ */
 export async function activate(context: vscode.ExtensionContext) {
+  // Set update token command
   const updateToken = async () => {
     const newToken = await vscode.window.showInputBox({
       prompt: "Please enter GitHub notification token",
     });
     if (newToken) {
-      await context.secrets.store(SECRET_TOKEN_KEY, newToken);
+      await context.secrets.store(STORAGE_KEY.TOKEN, newToken);
       vscode.window.showInformationMessage("GitHub notification token set!");
     } else {
       vscode.window.showErrorMessage(
@@ -38,34 +48,117 @@ export async function activate(context: vscode.ExtensionContext) {
 
   context.subscriptions.push(
     vscode.commands.registerCommand(
-      "github-notifications.updateToken",
+      "github-code-notifications.updateToken",
       updateToken
     )
   );
 
-  if (!(await context.secrets.get(SECRET_TOKEN_KEY))) {
+  // Ask for token if not set
+  if (!(await context.secrets.get(STORAGE_KEY.TOKEN))) {
     await updateToken();
   }
 
-  const providers = (["unread", "read"] as Status[]).map((status) => {
-    const treeDataProvider = new NotificationProvider(status);
-    const treeView = vscode.window.createTreeView(
-      `github-notifications-${status}`,
-      {
-        treeDataProvider,
-        showCollapseAll: true,
+  const storage = new GlobalStateStorage(context);
+  const refreshHandlers: RefreshHandler[] = [];
+
+  // Set new and read panels
+  for (const status of ["unread", "read"] as Status[]) {
+    const treeDataProvider = new NotificationProvider(
+      (notifications: Notification[]) => {
+        const done = storage.get(STORAGE_KEY.DONE);
+        return notifications.filter(
+          ({ id, unread }) => !done.has(id) && unread === (status === "unread")
+        );
       }
     );
-    status === "unread" && treeDataProvider.setTreeView(treeView);
-    return treeDataProvider;
+    vscode.window.createTreeView(`github-code-notifications-${status}`, {
+      treeDataProvider,
+      showCollapseAll: true,
+    });
+    refreshHandlers.push(treeDataProvider);
+  }
+
+  // Set done panel
+  const doneTreeDataProvider = new NotificationProvider(
+    (notifications: Notification[]) => {
+      const done = storage.get(STORAGE_KEY.DONE);
+      return notifications.filter((n) => done.has(n.id));
+    }
+  );
+  const treeView = vscode.window.createTreeView(
+    `github-code-notifications-done`,
+    {
+      treeDataProvider: doneTreeDataProvider,
+      showCollapseAll: true,
+    }
+  );
+  refreshHandlers.push(doneTreeDataProvider);
+
+  // Set badge count refresh
+  refreshHandlers.push({
+    refresh: (latest) => {
+      const done = storage.get(STORAGE_KEY.DONE);
+      const skipCI = vscode.workspace
+        .getConfiguration("github-code-notifications")
+        .get("ignoreCiActivity") as boolean;
+      const badgeCount = latest.filter(
+        ({ id, unread, reason }) =>
+          !done.has(id) && unread && (!skipCI || reason !== "ci_activity")
+      ).length;
+      treeView.badge = {
+        tooltip: `${badgeCount} new notification${badgeCount > 1 ? "s" : ""}`,
+        value: badgeCount,
+      };
+    },
   });
 
-  new Fetcher(context.secrets, providers);
+  // Set latest data cache
+  let latest: Notification[] = [];
+  refreshHandlers.push({ refresh: (update) => (latest = update) });
+
+  // Start polling for notifications
+  poll(context.secrets, refreshHandlers);
+
+  // Set done and undone commands
+  const updateDoneList = async (
+    { id }: Partial<Notification>,
+    add: boolean
+  ) => {
+    if (!id) {
+      id = await vscode.window.showInputBox({
+        prompt: "Please enter GitHub notification id",
+      });
+      if (!id) {
+        return vscode.window.showErrorMessage(
+          "Updating done items requires a notification id."
+        );
+      }
+    }
+    if (add) {
+      storage.add(STORAGE_KEY.DONE, id);
+    } else {
+      storage.remove(STORAGE_KEY.DONE, id);
+    }
+    refreshHandlers.forEach((p) => p.refresh(latest));
+  };
+
+  for (const operation of ["done", "undone"] as const) {
+    context.subscriptions.push(
+      vscode.commands.registerCommand(
+        `github-code-notifications.${operation}`,
+        (n) => updateDoneList(n, operation === "done")
+      )
+    );
+  }
 }
 
-// This method is called when your extension is deactivated
 export function deactivate() {}
 
+/**
+ * Format snake_case identifiers as readable labels
+ * @param text snake_case
+ * @returns Snake case
+ */
 function unSnakeCase(text: string) {
   const segments = text.split("_");
   const firstWord = segments.splice(0, 1)[0];
@@ -74,73 +167,102 @@ function unSnakeCase(text: string) {
     .join(" ");
 }
 
-export class Fetcher {
-  constructor(
-    secrets: vscode.SecretStorage,
-    providers: NotificationProvider[]
-  ) {
-    const update = async () => {
-      const bailUntilTokenFixed = () => {
-        secrets.onDidChange((e) => e.key === SECRET_TOKEN_KEY && update());
-      };
-      const token = await secrets.get(SECRET_TOKEN_KEY);
-      if (!token) {
-        return bailUntilTokenFixed();
-      }
-
-      const response = await fetch(
-        "https://api.github.com/notifications?all=true",
-        {
-          headers: {
-            Accept: "application/vnd.github+json",
-            Authorization: `Bearer ${token}`,
-            "X-Github-Api-Version": "2022-11-28",
-          },
-        }
-      );
-      let notifications = (await response.json()) as Notification[];
-
-      if (response.status === 401) {
-        vscode.window.showErrorMessage(
-          'Error fetching notifications; is the token valid and does it have notifications permissions? Update it with the "Update token" command.'
-        );
-        return bailUntilTokenFixed();
-      }
-
-      const map = notifications.reduce((acc, n) => {
-        const status = n.unread ? "unread" : "read";
-        const map =
-          acc.get(status) ||
-          (acc
-            .set(status, new Map<string, Notification[]>())
-            .get(status) as Map<string, Notification[]>);
-        const notifs =
-          map.get(n.reason) ||
-          (map.set(n.reason, []).get(n.reason) as Notification[]);
-        notifs.push(n);
-        return acc;
-      }, new Map<Status, Map<string, Notification[]>>());
-
-      providers.forEach((p) => p.refresh(map));
-
-      const pollInterval = response.headers.get("X-Poll-Interval");
-      setTimeout(update, (pollInterval ? +pollInterval : 60) * 1000);
+/**
+ * Poll for notifications and update refresh handlers on data reception
+ * @param secrets Extension secrets
+ * @param refreshHandlers Refresh handlers to call with the latest data on data update
+ */
+function poll(
+  secrets: vscode.SecretStorage,
+  refreshHandlers: RefreshHandler[]
+) {
+  const update = async () => {
+    const bailUntilTokenFixed = () => {
+      secrets.onDidChange((e) => e.key === STORAGE_KEY.TOKEN && update());
     };
-    update();
+    const token = await secrets.get(STORAGE_KEY.TOKEN);
+    if (!token) {
+      return bailUntilTokenFixed();
+    }
+    const headers = {
+      Accept: "application/vnd.github+json",
+      Authorization: `Bearer ${token}`,
+      "X-Github-Api-Version": "2022-11-28",
+    };
+
+    // Fetch notifications
+    const response = await fetch(
+      "https://api.github.com/notifications?all=true",
+      { headers }
+    );
+    let notifications = (await response.json()) as Notification[];
+
+    if (response.status === 401) {
+      vscode.window.showErrorMessage(
+        'Error fetching notifications; is the token valid and does it have notifications permissions? Update it with the "Update token" command.'
+      );
+      return bailUntilTokenFixed();
+    }
+
+    // Fetch pull request merge status for all pull-request-related notifications
+    await Promise.all(
+      notifications
+        .filter((n) => n.subject?.type === "PullRequest" && n.subject.url)
+        .map(async (n) => {
+          const pull = await fetch(n.subject!.url!, { headers });
+          n.merged = !!(
+            (await pull.json()) as { merged_at: string } | undefined
+          )?.merged_at;
+        })
+    );
+
+    refreshHandlers.forEach((p) => p.refresh(notifications));
+
+    const pollInterval = response.headers.get("X-Poll-Interval");
+    setTimeout(update, (pollInterval ? +pollInterval : 60) * 1000);
+  };
+  update();
+}
+
+/**
+ * Handles extension storage gets and updates
+ */
+class GlobalStateStorage {
+  private globalState: vscode.Memento;
+  constructor(context: vscode.ExtensionContext) {
+    this.globalState = context.globalState;
+  }
+
+  public get(key: string) {
+    return new Set(this.globalState.get(key) as string[]);
+  }
+
+  public add(key: string, id: string) {
+    const done = this.get(key);
+    done.add(id);
+    this.globalState.update(key, Array.from(done.values()));
+  }
+
+  public remove(key: string, id: string) {
+    const done = this.get(key);
+    done.delete(id);
+    this.globalState.update(key, Array.from(done.values()));
   }
 }
 
+/**
+ *
+ */
 export class NotificationProvider
-  implements vscode.TreeDataProvider<NotificationItem>
+  implements vscode.TreeDataProvider<NotificationItem>, RefreshHandler
 {
-  private treeView?: vscode.TreeView<NotificationItem>;
   private notificationsPerReason: Map<string, Notification[]> = new Map();
 
-  constructor(private status: Status) {}
-
-  setTreeView(treeView: vscode.TreeView<NotificationItem>) {
-    this.treeView = treeView;
-  }
+  constructor(
+    private notificationFilter: (
+      notifications: Notification[]
+    ) => Notification[]
+  ) {}
 
   getTreeItem(element: NotificationItem): vscode.TreeItem {
     return element;
@@ -153,32 +275,20 @@ export class NotificationProvider
       ).sort((a, b) => a.localeCompare(b));
       return Promise.resolve(
         rootItems.map(
-          (i) =>
+          (id) =>
             new NotificationItem(
-              unSnakeCase(i) +
-                ` (${this.notificationsPerReason?.get(i)?.length})`,
-              i,
-              "bang.svg"
+              id,
+              unSnakeCase(id) +
+                ` (${this.notificationsPerReason?.get(id)?.length})`
             )
         )
       );
-    } else if (element.root) {
+    } else if (!element.notification) {
       return Promise.resolve(
         this.notificationsPerReason
-          ?.get(element.root)
+          ?.get(element.id)
           ?.map(
-            (i) =>
-              new NotificationItem(
-                i.subject?.type + " : " + i.subject?.title || "(?)",
-                undefined,
-                i.subject?.type || "",
-                i.subject?.url
-                  ?.replace(
-                    "https://api.github.com/repos",
-                    "https://github.com"
-                  )
-                  .replace(/\/pulls\/(\d+)$/, "/pull/$1")
-              )
+            (n) => new NotificationItem(n.id, `${n.subject?.title || "(?)"}`, n)
           ) || []
       );
     } else {
@@ -190,81 +300,82 @@ export class NotificationProvider
     NotificationItem | undefined | null | void
   > = new vscode.EventEmitter<NotificationItem | undefined | null | void>();
 
-  public refresh(map: Map<Status, Map<string, Notification[]>>): void {
-    this.notificationsPerReason = map.get(this.status) as Map<
-      string,
-      Notification[]
-    >;
-
-    const reviewRequiredCount = Array.from(
-      this.notificationsPerReason.entries()
-    ).reduce(
-      (acc, [reason, notifications]) =>
-        acc + (reason === "ci_activity" ? 0 : notifications.length),
-      0
-    );
-
-    this.treeView &&
-      (this.treeView.badge = {
-        tooltip: `${reviewRequiredCount} notifications`,
-        value: reviewRequiredCount,
-      });
-
-    this._onDidChangeTreeData.fire();
-  }
-
   readonly onDidChangeTreeData: vscode.Event<
     NotificationItem | undefined | null | void
   > = this._onDidChangeTreeData.event;
+
+  public refresh(latest: Notification[]): void {
+    this.notificationsPerReason = this.notificationFilter(latest).reduce(
+      (map, n) => {
+        const notifications =
+          map.get(n.reason) ||
+          (map.set(n.reason, []).get(n.reason) as Notification[]);
+        notifications.push(n);
+        return map;
+      },
+      new Map<string, Notification[]>()
+    );
+
+    this._onDidChangeTreeData.fire();
+  }
 }
 
+/**
+ * Notification representation for tree views
+ */
 class NotificationItem extends vscode.TreeItem {
-  private ICON_DIRECTORY = {
+  private static ICON_DIRECTORY = {
     default: "info.svg",
-    // assign: "githubnotifications.svg",
-    // author: "githubnotifications.svg",
-    // comment: "githubnotifications.svg",
-    // ci_activity: "githubnotifications.svg",
-    // invitation: "githubnotifications.svg",
-    // manual: "githubnotifications.svg",
-    // mention: "githubnotifications.svg",
-    review_requested: "bang.svg",
+    assign: "issue.svg",
+    author: "edit.svg",
+    comment: "comment.svg",
+    ci_activity: "warn.svg",
+    invitation: "invite.svg",
+    manual: "subscribe.svg",
+    mention: "at.svg",
+    review_requested: "review.svg",
     security_alert: "bang.svg",
-    // state_change: "githubnotifications.svg",
-    // subscribed: "githubnotifications.svg",
-    // team_mention: "githubnotifications.svg",
+    state_change: "info.svg",
+    subscribed: "subscribe.svg",
+    team_mention: "team.svg",
     PullRequest: "pr.svg",
+    PullRequestMerged: "merged.svg",
+    CheckSuite: "fail.svg",
+    Issue: "issue.svg",
   } as Record<string, string>;
 
   constructor(
-    public readonly label: string,
-    public root: string | undefined,
-    leaf?: string,
-    url?: string
+    public id: string,
+    public label: string,
+    public notification?: Notification
   ) {
     super(
       label,
-      root
-        ? root === "ci_activity"
-          ? vscode.TreeItemCollapsibleState.Collapsed
-          : vscode.TreeItemCollapsibleState.Expanded
-        : vscode.TreeItemCollapsibleState.None
+      notification
+        ? vscode.TreeItemCollapsibleState.None
+        : vscode.TreeItemCollapsibleState.Expanded
     );
+
+    const leaf = notification?.subject?.type || "";
+    const url = notification?.subject?.url
+      ?.replace("https://api.github.com/repos", "https://github.com")
+      .replace(/\/pulls\/(\d+)$/, "/pull/$1");
+
     this.tooltip = this.label;
-    (url || !root) &&
+    (url || notification) &&
       (this.command = {
         title: "Open url",
         command: "vscode.open",
         arguments: [url || "https://github.com/notifications"],
       });
     const icon =
-      (root && this.ICON_DIRECTORY[root]) ||
-      (leaf && this.ICON_DIRECTORY[leaf]) ||
-      this.ICON_DIRECTORY.default;
-    icon &&
-      (this.iconPath = {
-        light: path.join(__filename, "..", "..", "resources", icon),
-        dark: path.join(__filename, "..", "..", "resources", icon),
-      });
+      (notification
+        ? NotificationItem.ICON_DIRECTORY[
+            notification.subject?.type + (notification.merged ? "Merged" : "")
+          ]
+        : NotificationItem.ICON_DIRECTORY[id]) ||
+      NotificationItem.ICON_DIRECTORY.default;
+    this.iconPath = path.join(__filename, "..", "..", "resources", icon);
+    this.contextValue = notification ? "leaf" : "root";
   }
 }
