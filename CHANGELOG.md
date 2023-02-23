@@ -2,6 +2,10 @@
 
 ## Releases
 
+### 0.0.6
+
+Added approval_request & WorkflowRun icon support.
+
 ### 0.0.5
 
 Added graceful handling of transient network issues.

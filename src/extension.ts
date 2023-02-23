@@ -336,6 +336,7 @@ export class NotificationProvider
 class NotificationItem extends vscode.TreeItem {
   private static ICON_DIRECTORY = {
     default: "info.svg",
+    approval_requested: "deploy.svg",
     assign: "issue.svg",
     author: "edit.svg",
     comment: "comment.svg",
@@ -352,6 +353,7 @@ class NotificationItem extends vscode.TreeItem {
     PullRequestMerged: "merged.svg",
     CheckSuite: "fail.svg",
     Issue: "issue.svg",
+    WorkflowRun: "workflow.svg",
   } as Record<string, string>;
 
   constructor(
