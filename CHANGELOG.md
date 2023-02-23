@@ -1,9 +1,25 @@
 # Change Log
 
-All notable changes to the "github-notifications" extension will be documented in this file.
+## Releases
 
-Check [Keep a Changelog](http://keepachangelog.com/) for recommendations on how to structure this file.
+### 0.0.5
 
-## [Unreleased]
+Added graceful handling of transient network issues.
 
-- Initial release
+### 0.0.4
+
+Fixed README.md with extension screenshot.
+
+### 0.0.3
+
+Added extension-stored "done" status tracking.
+
+### 0.0.2
+
+Added NEW and READ panels, supporting both read and unread notifications.
+
+### 0.0.1
+
+Initial release!
+
+---

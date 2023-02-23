@@ -20,6 +20,10 @@ You can update said token through the `>GitHub Notifications: Update token` comm
 
 ## Release Notes
 
+### 0.0.5
+
+Added graceful handling of transient network issues.
+
 ### 0.0.4
 
 Fixed README.md with extension screenshot.

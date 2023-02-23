@@ -194,8 +194,14 @@ function poll(
     const response = await fetch(
       "https://api.github.com/notifications?all=true",
       { headers }
-    );
-    let notifications = (await response.json()) as Notification[];
+    ).catch((e) => console.error(e));
+    if (!response) {
+      vscode.window.showErrorMessage(
+        "Error fetching notifications, retrying in 60 seconds."
+      );
+      setTimeout(update, 60 * 1000);
+      return;
+    }
 
     if (response.status === 401) {
       vscode.window.showErrorMessage(
@@ -204,14 +210,18 @@ function poll(
       return bailUntilTokenFixed();
     }
 
+    let notifications = (await response.json()) as Notification[];
+
     // Fetch pull request merge status for all pull-request-related notifications
     await Promise.all(
       notifications
         .filter((n) => n.subject?.type === "PullRequest" && n.subject.url)
         .map(async (n) => {
-          const pull = await fetch(n.subject!.url!, { headers });
+          const pull = await fetch(n.subject!.url!, { headers }).catch(
+            () => undefined // Ignore errors, this is extra info so not worth annoying the user.
+          );
           n.merged = !!(
-            (await pull.json()) as { merged_at: string } | undefined
+            pull && ((await pull.json()) as { merged_at: string } | undefined)
           )?.merged_at;
         })
     );
