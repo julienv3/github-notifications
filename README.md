@@ -2,6 +2,8 @@
 
 Keep an eye on your GitHub notifications without leaving your editor!
 
+![GitHub Notifications extension screenshot](resources/screenshot.png?raw=true)
+
 ## Features
 
 This extensions allows you to see GitHub notifications (https://github.com/notifications) right in VS Code.
@@ -17,6 +19,10 @@ Additionally, the "repo" scope can optionally be added so pull requests referred
 You can update said token through the `>GitHub Notifications: Update token` command in VS Code.
 
 ## Release Notes
+
+### 0.0.4
+
+Fixed README.md with extension screenshot.
 
 ### 0.0.3
 
