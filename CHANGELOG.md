@@ -2,6 +2,10 @@
 
 ## Releases
 
+### 0.0.7
+
+Fetch all notification pages.
+
 ### 0.0.6
 
 Added approval_request & WorkflowRun icon support.

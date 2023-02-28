@@ -176,7 +176,25 @@ function poll(
   secrets: vscode.SecretStorage,
   refreshHandlers: RefreshHandler[]
 ) {
+  const { log, logError } = (() => {
+    const output = vscode.window.createOutputChannel("GitHub Notifications");
+    const logger = (message: string, error?: true) => {
+      output.appendLine(
+        `${new Date().toLocaleString()} [${
+          error ? "error" : "info"
+        }] ${message}`
+      );
+      error && vscode.window.showErrorMessage(message);
+    };
+    return {
+      log: (message: string) => logger(message),
+      logError: (message: string) => logger(message, true),
+    };
+  })();
+
   const update = async () => {
+    log("Updating...");
+
     const bailUntilTokenFixed = () => {
       secrets.onDidChange((e) => e.key === STORAGE_KEY.TOKEN && update());
     };
@@ -191,45 +209,59 @@ function poll(
     };
 
     // Fetch notifications
-    const response = await fetch(
-      "https://api.github.com/notifications?all=true",
-      { headers }
-    ).catch((e) => console.error(e));
-    if (!response) {
-      vscode.window.showErrorMessage(
-        "Error fetching notifications, retrying in 60 seconds."
-      );
-      setTimeout(update, 60 * 1000);
-      return;
-    }
+    const notifications: Notification[] = [];
+    const per_page = 50;
+    let loadMore = true;
+    let page = 1;
+    let pollInterval: string | null = null;
+    while (loadMore) {
+      const response = await fetch(
+        `https://api.github.com/notifications?all=true&page=${page++}&per_page=${per_page}`,
+        { headers }
+      ).catch((e) => console.error(e));
+      if (!response) {
+        logError("Error fetching notifications, retrying in 60 seconds.");
+        setTimeout(update, 60 * 1000);
+        return;
+      }
 
-    if (response.status === 401) {
-      vscode.window.showErrorMessage(
-        'Error fetching notifications; is the token valid and does it have notifications permissions? Update it with the "Update token" command.'
-      );
-      return bailUntilTokenFixed();
-    }
+      if (response.status === 401) {
+        logError(
+          'Error fetching notifications; is the token valid and does it have notifications permissions? Update it with the "Update token" command.'
+        );
+        return bailUntilTokenFixed();
+      }
+      const pageNotifications = (await response.json()) as Notification[];
+      for (const nofitication of pageNotifications) {
+        notifications.push(nofitication);
+      }
+      loadMore = pageNotifications.length === per_page;
 
-    let notifications = (await response.json()) as Notification[];
+      pollInterval = response.headers.get("X-Poll-Interval");
+    }
+    log(`Fetched ${notifications.length} notifications.`);
 
     // Fetch pull request merge status for all pull-request-related notifications
     await Promise.all(
       notifications
         .filter((n) => n.subject?.type === "PullRequest" && n.subject.url)
         .map(async (n) => {
-          const pull = await fetch(n.subject!.url!, { headers }).catch(
-            () => undefined // Ignore errors, this is extra info so not worth annoying the user.
-          );
+          const pull = await fetch(n.subject!.url!, { headers }).catch((e) => {
+            // Don't log as error, this is extra info so not worth annoying the user.
+            log(`Fetching a pull request failed; ${e}`);
+          });
           n.merged = !!(
             pull && ((await pull.json()) as { merged_at: string } | undefined)
           )?.merged_at;
         })
     );
 
+    log("Refreshing data...");
     refreshHandlers.forEach((p) => p.refresh(notifications));
 
-    const pollInterval = response.headers.get("X-Poll-Interval");
-    setTimeout(update, (pollInterval ? +pollInterval : 60) * 1000);
+    const nextPoll = pollInterval ? +pollInterval : 60;
+    log(`Scheduling next update in ${nextPoll} seconds.`);
+    setTimeout(update, nextPoll * 1000);
   };
   update();
 }
