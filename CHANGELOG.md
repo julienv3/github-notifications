@@ -2,6 +2,10 @@
 
 ## Releases
 
+### 0.0.8
+
+Only fetch new notifications using "since" query parameter.
+
 ### 0.0.7
 
 Fetch all notification pages.

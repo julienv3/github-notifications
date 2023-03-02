@@ -192,6 +192,9 @@ function poll(
     };
   })();
 
+  const notifications = new Map<string, Notification>();
+  let since = "";
+
   const update = async () => {
     log("Updating...");
 
@@ -209,14 +212,13 @@ function poll(
     };
 
     // Fetch notifications
-    const notifications: Notification[] = [];
     const per_page = 50;
     let loadMore = true;
     let page = 1;
     let pollInterval: string | null = null;
     while (loadMore) {
       const response = await fetch(
-        `https://api.github.com/notifications?all=true&page=${page++}&per_page=${per_page}`,
+        `https://api.github.com/notifications?all=true&page=${page++}&per_page=${per_page}&since=${since}`,
         { headers }
       ).catch((e) => console.error(e));
       if (!response) {
@@ -232,18 +234,22 @@ function poll(
         return bailUntilTokenFixed();
       }
       const pageNotifications = (await response.json()) as Notification[];
-      for (const nofitication of pageNotifications) {
-        notifications.push(nofitication);
+      for (const notification of pageNotifications) {
+        notifications.set(notification.id, notification);
       }
+      log(`Fetched ${pageNotifications.length} notifications.`);
       loadMore = pageNotifications.length === per_page;
 
       pollInterval = response.headers.get("X-Poll-Interval");
     }
-    log(`Fetched ${notifications.length} notifications.`);
+    log(`Accumulated ${notifications.size} notifications.`);
 
+    const notificationsArray = Array.from(notifications.values());
+    const refresh = () =>
+      refreshHandlers.forEach((p) => p.refresh(notificationsArray));
     // Fetch pull request merge status for all pull-request-related notifications
-    await Promise.all(
-      notifications
+    Promise.all(
+      notificationsArray
         .filter((n) => n.subject?.type === "PullRequest" && n.subject.url)
         .map(async (n) => {
           const pull = await fetch(n.subject!.url!, { headers }).catch((e) => {
@@ -254,13 +260,17 @@ function poll(
             pull && ((await pull.json()) as { merged_at: string } | undefined)
           )?.merged_at;
         })
-    );
+    ).then(() => {
+      log("Refreshing data after PR fetch...");
+      refresh();
+    });
 
     log("Refreshing data...");
-    refreshHandlers.forEach((p) => p.refresh(notifications));
+    refresh();
 
     const nextPoll = pollInterval ? +pollInterval : 60;
     log(`Scheduling next update in ${nextPoll} seconds.`);
+    since = new Date().toISOString();
     setTimeout(update, nextPoll * 1000);
   };
   update();
