@@ -22,6 +22,10 @@ You can update said token through the `>GitHub Notifications: Update token` comm
 
 ## Release Notes
 
+### 0.0.10
+
+Stop fetching merge status if a PR is known as merged.
+
 ### 0.0.9
 
 Add "notificationsSince" and "notificationCap" settings.

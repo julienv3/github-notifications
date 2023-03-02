@@ -262,13 +262,17 @@ function poll(
       notificationsArray
         .filter((n) => n.subject?.type === "PullRequest" && n.subject.url)
         .map(async (n) => {
-          const pull = await fetch(n.subject!.url!, { headers }).catch((e) => {
-            // Don't log as error, this is extra info so not worth annoying the user.
-            log(`Fetching a pull request failed; ${e}`);
-          });
-          n.merged = !!(
-            pull && ((await pull.json()) as { merged_at: string } | undefined)
-          )?.merged_at;
+          if (!n.merged) {
+            const pull = await fetch(n.subject!.url!, { headers }).catch(
+              (e) => {
+                // Don't log as error, this is extra info so not worth annoying the user.
+                log(`Fetching a pull request failed; ${e}`);
+              }
+            );
+            n.merged = !!(
+              pull && ((await pull.json()) as { merged_at: string } | undefined)
+            )?.merged_at;
+          }
         })
     ).then(() => {
       log("Refreshing data after PR fetch...");
