@@ -18,7 +18,13 @@ Additionally, the "repo" scope can optionally be added so pull requests referred
 
 You can update said token through the `>GitHub Notifications: Update token` command in VS Code.
 
+**Too many notifications?** Tweak settings to see less of them based on a cap or time range!
+
 ## Release Notes
+
+### 0.0.9
+
+Add "notificationsSince" and "notificationCap" settings.
 
 ### 0.0.8
 

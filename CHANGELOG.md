@@ -2,6 +2,10 @@
 
 ## Releases
 
+### 0.0.9
+
+Add "notificationsSince" and "notificationCap" settings.
+
 ### 0.0.8
 
 Only fetch new notifications using "since" query parameter.

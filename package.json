@@ -3,7 +3,7 @@
   "displayName": "GitHub Notifications in VS Code",
   "description": "Display GitHub notifications in VS Code",
   "publisher": "julienv3",
-  "version": "0.0.8",
+  "version": "0.0.9",
   "license": "MIT",
   "homepage": "https://github.com/julienv3/github-notifications",
   "icon": "resources/icon.png",
@@ -87,6 +87,16 @@
           "type": "boolean",
           "default": false,
           "description": "Ignore \"ci activity\" notifications for the new notifications count displayed in the activity bar icon badge."
+        },
+        "github-code-notifications.notificationCap": {
+          "type": "number",
+          "default": 0,
+          "description": "Only fetch up to this many notifications (multiple of 50)."
+        },
+        "github-code-notifications.notificationsSince": {
+          "type": "number",
+          "default": 0,
+          "description": "Number of days to fetch notifications for (0 means all notifications)."
         }
       }
     }

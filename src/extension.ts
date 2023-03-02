@@ -117,7 +117,11 @@ export async function activate(context: vscode.ExtensionContext) {
   refreshHandlers.push({ refresh: (update) => (latest = update) });
 
   // Start polling for notifications
-  poll(context.secrets, refreshHandlers);
+  poll(
+    context.secrets,
+    refreshHandlers,
+    vscode.workspace.getConfiguration("github-code-notifications")
+  );
 
   // Set done and undone commands
   const updateDoneList = async (
@@ -171,10 +175,12 @@ function unSnakeCase(text: string) {
  * Poll for notifications and update refresh handlers on data reception
  * @param secrets Extension secrets
  * @param refreshHandlers Refresh handlers to call with the latest data on data update
+ * @param config Extension workspace config
  */
 function poll(
   secrets: vscode.SecretStorage,
-  refreshHandlers: RefreshHandler[]
+  refreshHandlers: RefreshHandler[],
+  config: vscode.WorkspaceConfiguration
 ) {
   const { log, logError } = (() => {
     const output = vscode.window.createOutputChannel("GitHub Notifications");
@@ -193,7 +199,11 @@ function poll(
   })();
 
   const notifications = new Map<string, Notification>();
-  let since = "";
+  const cap = config.get<number>("notificationCap");
+  const days = config.get<number>("notificationsSince");
+  let since = days
+    ? new Date(Date.now() - 1000 * 60 * 60 * 24 * days).toISOString()
+    : "";
 
   const update = async () => {
     log("Updating...");
@@ -216,7 +226,7 @@ function poll(
     let loadMore = true;
     let page = 1;
     let pollInterval: string | null = null;
-    while (loadMore) {
+    while (loadMore && (!cap || notifications.size < cap)) {
       const response = await fetch(
         `https://api.github.com/notifications?all=true&page=${page++}&per_page=${per_page}&since=${since}`,
         { headers }
