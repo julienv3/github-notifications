@@ -3,7 +3,7 @@
   "displayName": "GitHub Notifications in VS Code",
   "description": "Display GitHub notifications in VS Code",
   "publisher": "julienv3",
-  "version": "0.0.10",
+  "version": "0.0.11",
   "license": "MIT",
   "homepage": "https://github.com/julienv3/github-notifications",
   "icon": "resources/icon.png",
@@ -90,7 +90,7 @@
         },
         "github-code-notifications.notificationCap": {
           "type": "number",
-          "default": 0,
+          "default": 100,
           "description": "Only fetch up to this many notifications (multiple of 50)."
         },
         "github-code-notifications.notificationsSince": {

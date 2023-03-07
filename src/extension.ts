@@ -199,11 +199,22 @@ function poll(
   })();
 
   const notifications = new Map<string, Notification>();
-  const cap = config.get<number>("notificationCap");
+  const cap = config.get<number>("notificationCap") || 100;
+  const per_page = 50;
   const days = config.get<number>("notificationsSince");
-  let since = days
+  const defaultSince = days
     ? new Date(Date.now() - 1000 * 60 * 60 * 24 * days).toISOString()
     : "";
+  let since = defaultSince;
+  // Notification going from "unread" to "read" doesn't update its timestamp;
+  // until it does, "since" shouldn't be updated  as it will hide "unread" to "read" updates.
+  // Still, let's be curteous to GitHub and not care about "read" if reading > 4 pages per poll;
+  // "unread" to "read" updates will then be refreshed every 30 minutes.
+  const beCurteous = cap / per_page > 4;
+  beCurteous && setInterval(() => (since = defaultSince), 30 * 60 * 1000);
+  const updateSinceToNow = beCurteous
+    ? () => (since = new Date().toISOString())
+    : undefined;
 
   const update = async () => {
     log("Updating...");
@@ -222,7 +233,6 @@ function poll(
     };
 
     // Fetch notifications
-    const per_page = 50;
     let loadMore = true;
     let page = 1;
     let pollInterval: string | null = null;
@@ -284,7 +294,7 @@ function poll(
 
     const nextPoll = pollInterval ? +pollInterval : 60;
     log(`Scheduling next update in ${nextPoll} seconds.`);
-    since = new Date().toISOString();
+    updateSinceToNow?.();
     setTimeout(update, nextPoll * 1000);
   };
   update();
@@ -317,7 +327,7 @@ class GlobalStateStorage {
 }
 
 /**
- *
+ * Notification tree data provider
  */
 export class NotificationProvider
   implements vscode.TreeDataProvider<NotificationItem>, RefreshHandler

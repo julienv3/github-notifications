@@ -2,6 +2,10 @@
 
 ## Releases
 
+### 0.0.11
+
+Poll notification read status and set "notificationCap" reasonable default.
+
 ### 0.0.10
 
 Stop fetching merge status if a PR is known as merged.
