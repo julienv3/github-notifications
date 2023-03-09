@@ -2,6 +2,10 @@
 
 ## Releases
 
+### 0.0.13
+
+Fix fetching cap issue.
+
 ### 0.0.12
 
 Recover from page fetching transient issue.

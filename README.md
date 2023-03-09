@@ -22,6 +22,10 @@ You can update said token through the `>GitHub Notifications: Update token` comm
 
 ## Release Notes
 
+### 0.0.13
+
+Fix fetching cap issue.
+
 ### 0.0.12
 
 Recover from page fetching transient issue.

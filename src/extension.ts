@@ -236,7 +236,8 @@ function poll(
     let loadMore = true;
     let page = 1;
     let pollInterval: string | null = null;
-    while (loadMore && (!cap || notifications.size < cap)) {
+    let fetched = 0;
+    while (loadMore && (!cap || fetched < cap)) {
       const response = await fetch(
         `https://api.github.com/notifications?all=true&page=${page++}&per_page=${per_page}&since=${since}`,
         { headers }
@@ -264,6 +265,7 @@ function poll(
       }
       log(`Fetched ${pageNotifications.length} notifications.`);
       loadMore = pageNotifications.length === per_page;
+      fetched += pageNotifications.length;
 
       pollInterval = response.headers.get("X-Poll-Interval");
     }
