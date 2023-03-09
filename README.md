@@ -22,6 +22,10 @@ You can update said token through the `>GitHub Notifications: Update token` comm
 
 ## Release Notes
 
+### 0.0.12
+
+Recover from page fetching transient issue.
+
 ### 0.0.11
 
 Poll notification read status and set "notificationCap" reasonable default.

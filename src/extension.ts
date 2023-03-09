@@ -253,9 +253,14 @@ function poll(
         );
         return bailUntilTokenFixed();
       }
-      const pageNotifications = (await response.json()) as Notification[];
-      for (const notification of pageNotifications) {
-        notifications.set(notification.id, notification);
+      let pageNotifications = (await response.json()) as Notification[];
+      try {
+        for (const notification of pageNotifications) {
+          notifications.set(notification.id, notification);
+        }
+      } catch (e) {
+        logError(`Error fetching page: ${e}`);
+        pageNotifications = [];
       }
       log(`Fetched ${pageNotifications.length} notifications.`);
       loadMore = pageNotifications.length === per_page;
