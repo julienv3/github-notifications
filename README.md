@@ -22,6 +22,10 @@ You can update said token through the `>GitHub Notifications: Update token` comm
 
 ## Release Notes
 
+### 0.0.15
+
+Cache merged PR status.
+
 ### 0.0.14
 
 Add more error-catching logic around fetch calls.

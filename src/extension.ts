@@ -60,6 +60,7 @@ export async function activate(context: vscode.ExtensionContext) {
 
   const storage = new GlobalStateStorage(context);
   const refreshHandlers: RefreshHandler[] = [];
+  const mergedPullRequests = new Set<string>();
 
   // Set new and read panels
   for (const status of ["unread", "read"] as Status[]) {
@@ -69,7 +70,8 @@ export async function activate(context: vscode.ExtensionContext) {
         return notifications.filter(
           ({ id, unread }) => !done.has(id) && unread === (status === "unread")
         );
-      }
+      },
+      mergedPullRequests
     );
     vscode.window.createTreeView(`github-code-notifications-${status}`, {
       treeDataProvider,
@@ -83,7 +85,8 @@ export async function activate(context: vscode.ExtensionContext) {
     (notifications: Notification[]) => {
       const done = storage.get(STORAGE_KEY.DONE);
       return notifications.filter((n) => done.has(n.id));
-    }
+    },
+    mergedPullRequests
   );
   const treeView = vscode.window.createTreeView(
     `github-code-notifications-done`,
@@ -120,7 +123,8 @@ export async function activate(context: vscode.ExtensionContext) {
   poll(
     context.secrets,
     refreshHandlers,
-    vscode.workspace.getConfiguration("github-code-notifications")
+    vscode.workspace.getConfiguration("github-code-notifications"),
+    mergedPullRequests
   );
 
   // Set done and undone commands
@@ -180,7 +184,8 @@ function unSnakeCase(text: string) {
 function poll(
   secrets: vscode.SecretStorage,
   refreshHandlers: RefreshHandler[],
-  config: vscode.WorkspaceConfiguration
+  config: vscode.WorkspaceConfiguration,
+  mergedPullRequests: Set<string>
 ) {
   const { log, logError } = (() => {
     const output = vscode.window.createOutputChannel("GitHub Notifications");
@@ -288,7 +293,7 @@ function poll(
       notificationsArray
         .filter((n) => n.subject?.type === "PullRequest" && n.subject.url)
         .map(async (n) => {
-          if (!n.merged) {
+          if (!mergedPullRequests.has(n.subject!.url!)) {
             log(`Fetching pull request status at ${n.subject!.url}`);
             try {
               const pull = await fetch(n.subject!.url!, { headers }).catch(
@@ -297,10 +302,12 @@ function poll(
                   log(`Fetching a pull request failed; ${e}`);
                 }
               );
-              n.merged = !!(
-                pull &&
-                ((await pull.json()) as { merged_at: string } | undefined)
-              )?.merged_at;
+              const pullJson = (await pull?.json()) as
+                | { merged_at: string }
+                | undefined;
+              if (pullJson?.merged_at) {
+                mergedPullRequests.add(n.subject!.url!);
+              }
             } catch (e) {
               // Don't log as error, this is extra info so not worth annoying the user.
               log(`Error in pull request fetch: ${e}`);
@@ -360,7 +367,8 @@ export class NotificationProvider
   constructor(
     private notificationFilter: (
       notifications: Notification[]
-    ) => Notification[]
+    ) => Notification[],
+    private mergedPullRequests: Set<string>
   ) {}
 
   getTreeItem(element: NotificationItem): vscode.TreeItem {
@@ -387,7 +395,13 @@ export class NotificationProvider
         this.notificationsPerReason
           ?.get(element.id)
           ?.map(
-            (n) => new NotificationItem(n.id, `${n.subject?.title || "(?)"}`, n)
+            (n) =>
+              new NotificationItem(
+                n.id,
+                `${n.subject?.title || "(?)"}`,
+                n,
+                this.mergedPullRequests
+              )
           ) || []
       );
     } else {
@@ -448,7 +462,8 @@ class NotificationItem extends vscode.TreeItem {
   constructor(
     public id: string,
     public label: string,
-    public notification?: Notification
+    public notification?: Notification,
+    mergedPullRequests?: Set<string>
   ) {
     super(
       label,
@@ -472,7 +487,11 @@ class NotificationItem extends vscode.TreeItem {
     const icon =
       (notification
         ? NotificationItem.ICON_DIRECTORY[
-            notification.subject?.type + (notification.merged ? "Merged" : "")
+            notification.subject?.type +
+              (notification.subject?.url &&
+              mergedPullRequests?.has(notification.subject.url)
+                ? "Merged"
+                : "")
           ]
         : NotificationItem.ICON_DIRECTORY[id]) ||
       NotificationItem.ICON_DIRECTORY.default;
