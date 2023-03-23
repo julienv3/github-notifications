@@ -238,10 +238,19 @@ function poll(
     let pollInterval: string | null = null;
     let fetched = 0;
     while (loadMore && (!cap || fetched < cap)) {
-      const response = await fetch(
-        `https://api.github.com/notifications?all=true&page=${page++}&per_page=${per_page}&since=${since}`,
-        { headers }
-      ).catch((e) => console.error(e));
+      const response = await (() => {
+        try {
+          return fetch(
+            `https://api.github.com/notifications?all=true&page=${page++}&per_page=${per_page}&since=${since}`,
+            { headers }
+          ).catch((e) => {
+            logError(`Error fetching notifications: ${e}`);
+          });
+        } catch (e) {
+          logError(`Error in notifications fetch: ${e}`);
+        }
+      })();
+
       if (!response) {
         logError("Error fetching notifications, retrying in 60 seconds.");
         setTimeout(update, 60 * 1000);
@@ -280,15 +289,22 @@ function poll(
         .filter((n) => n.subject?.type === "PullRequest" && n.subject.url)
         .map(async (n) => {
           if (!n.merged) {
-            const pull = await fetch(n.subject!.url!, { headers }).catch(
-              (e) => {
-                // Don't log as error, this is extra info so not worth annoying the user.
-                log(`Fetching a pull request failed; ${e}`);
-              }
-            );
-            n.merged = !!(
-              pull && ((await pull.json()) as { merged_at: string } | undefined)
-            )?.merged_at;
+            log(`Fetching pull request status at ${n.subject!.url}`);
+            try {
+              const pull = await fetch(n.subject!.url!, { headers }).catch(
+                (e) => {
+                  // Don't log as error, this is extra info so not worth annoying the user.
+                  log(`Fetching a pull request failed; ${e}`);
+                }
+              );
+              n.merged = !!(
+                pull &&
+                ((await pull.json()) as { merged_at: string } | undefined)
+              )?.merged_at;
+            } catch (e) {
+              // Don't log as error, this is extra info so not worth annoying the user.
+              log(`Error in pull request fetch: ${e}`);
+            }
           }
         })
     ).then(() => {
