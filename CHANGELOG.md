@@ -2,6 +2,10 @@
 
 ## Releases
 
+### 0.0.16
+
+Add abort controller to notification fetch call, add scheduled recovery.
+
 ### 0.0.15
 
 Cache merged PR status.

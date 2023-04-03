@@ -22,6 +22,10 @@ You can update said token through the `>GitHub Notifications: Update token` comm
 
 ## Release Notes
 
+### 0.0.16
+
+Add abort controller to notification fetch call, add scheduled recovery.
+
 ### 0.0.15
 
 Cache merged PR status.

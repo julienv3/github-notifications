@@ -221,8 +221,15 @@ function poll(
     ? () => (since = new Date().toISOString())
     : undefined;
 
+  let recoveryTimeout: NodeJS.Timeout;
+  const scheduleRecovery = () => {
+    recoveryTimeout && clearTimeout(recoveryTimeout);
+    recoveryTimeout = setTimeout(update, 10 * 60000 * 1000);
+  };
+
   const update = async () => {
     log("Updating...");
+    scheduleRecovery();
 
     const bailUntilTokenFixed = () => {
       secrets.onDidChange((e) => e.key === STORAGE_KEY.TOKEN && update());
@@ -243,11 +250,13 @@ function poll(
     let pollInterval: string | null = null;
     let fetched = 0;
     while (loadMore && (!cap || fetched < cap)) {
+      const abortController = new AbortController();
+      const abortTimeout = setTimeout(() => abortController.abort(), 60000);
       const response = await (() => {
         try {
           return fetch(
             `https://api.github.com/notifications?all=true&page=${page++}&per_page=${per_page}&since=${since}`,
-            { headers }
+            { headers, signal: abortController.signal as any }
           ).catch((e) => {
             logError(`Error fetching notifications: ${e}`);
           });
@@ -255,6 +264,7 @@ function poll(
           logError(`Error in notifications fetch: ${e}`);
         }
       })();
+      clearTimeout(abortTimeout);
 
       if (!response) {
         logError("Error fetching notifications, retrying in 60 seconds.");
