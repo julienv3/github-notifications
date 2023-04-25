@@ -278,8 +278,9 @@ function poll(
         );
         return bailUntilTokenFixed();
       }
-      let pageNotifications = (await response.json()) as Notification[];
+      let pageNotifications: Notification[] = [];
       try {
+        pageNotifications = (await response.json()) as Notification[];
         for (const notification of pageNotifications) {
           notifications.set(notification.id, notification);
         }
@@ -332,7 +333,7 @@ function poll(
     log("Refreshing data...");
     refresh();
 
-    const nextPoll = pollInterval ? +pollInterval : 60;
+    const nextPoll = pollInterval && !isNaN(+pollInterval) ? +pollInterval : 60;
     log(`Scheduling next update in ${nextPoll} seconds.`);
     updateSinceToNow?.();
     setTimeout(update, nextPoll * 1000);
