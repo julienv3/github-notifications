@@ -101,15 +101,25 @@ export async function activate(context: vscode.ExtensionContext) {
   refreshHandlers.push({
     refresh: (latest) => {
       const done = storage.get(STORAGE_KEY.DONE);
-      const skipCI = vscode.workspace
-        .getConfiguration("github-code-notifications")
-        .get("ignoreCiActivity") as boolean;
-      const badgeCount = latest.filter(
-        ({ id, unread, reason }) =>
-          !done.has(id) && unread && (!skipCI || reason !== "ci_activity")
+      const config = vscode.workspace.getConfiguration(
+        "github-code-notifications"
+      );
+      const skipCI = config.get("ignoreCiActivity") as boolean;
+      const reviewBadge = config.get("reviewBadge") as boolean;
+      const badgeCount = (
+        reviewBadge
+          ? latest.filter(
+              ({ id, reason }) => !done.has(id) && reason === "review_requested"
+            )
+          : latest.filter(
+              ({ id, unread, reason }) =>
+                !done.has(id) && unread && (!skipCI || reason !== "ci_activity")
+            )
       ).length;
       treeView.badge = {
-        tooltip: `${badgeCount} new notification${badgeCount > 1 ? "s" : ""}`,
+        tooltip: reviewBadge
+          ? `${badgeCount} pending review${badgeCount > 1 ? "s" : ""}`
+          : `${badgeCount} new notification${badgeCount > 1 ? "s" : ""}`,
         value: badgeCount,
       };
     },

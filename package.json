@@ -3,7 +3,7 @@
   "displayName": "GitHub Notifications in VS Code",
   "description": "Display GitHub notifications in VS Code",
   "publisher": "julienv3",
-  "version": "0.0.17",
+  "version": "0.0.18",
   "license": "MIT",
   "homepage": "https://github.com/julienv3/github-notifications",
   "icon": "resources/icon.png",
@@ -88,6 +88,11 @@
           "default": false,
           "description": "Ignore \"ci activity\" notifications for the new notifications count displayed in the activity bar icon badge."
         },
+        "github-code-notifications.reviewBadge": {
+          "type": "boolean",
+          "default": false,
+          "description": "Makes the sidebar badge count all new & read reviews requested instead of all new notifications."
+        },
         "github-code-notifications.notificationCap": {
           "type": "number",
           "default": 100,
@@ -110,7 +115,8 @@
     "watch-tests": "tsc -p . -w --outDir out",
     "pretest": "pnpm run compile-tests && pnpm run compile && pnpm run lint",
     "lint": "eslint src --ext ts",
-    "test": "node ./out/test/runTest.js"
+    "test": "node ./out/test/runTest.js",
+    "start": "echo \"Use VSCode's 'Debug: Start Debugging' (F5) command.\""
   },
   "devDependencies": {
     "@types/glob": "^8.0.1",

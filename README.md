@@ -22,6 +22,10 @@ You can update said token through the `>GitHub Notifications: Update token` comm
 
 ## Release Notes
 
+### 0.0.18
+
+Add "reviewBadge" setting, allowing sidebar badge to represent pending reviews instead of all new notifications.
+
 ### 0.0.17
 
 Try-catch GitHub response json parsing.
